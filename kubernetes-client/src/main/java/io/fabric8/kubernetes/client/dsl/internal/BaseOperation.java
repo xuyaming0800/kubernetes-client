@@ -16,8 +16,6 @@
 package io.fabric8.kubernetes.client.dsl.internal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ning.http.client.AsyncHttpClient;
-import com.ning.http.client.Response;
 import io.fabric8.kubernetes.api.builder.Visitor;
 import io.fabric8.kubernetes.api.model.Doneable;
 import io.fabric8.kubernetes.api.model.HasMetadata;
@@ -31,6 +29,8 @@ import io.fabric8.kubernetes.client.dsl.ClientMixedOperation;
 import io.fabric8.kubernetes.client.dsl.ClientNonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.ClientResource;
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeleteable;
+import org.asynchttpclient.BoundRequestBuilder;
+import org.asynchttpclient.Response;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -283,7 +283,7 @@ public class BaseOperation<C extends KubernetesClient, T, L extends KubernetesRe
   public L list() throws KubernetesClientException {
     try {
       URL requestUrl = getNamespacedUrl();
-      AsyncHttpClient.BoundRequestBuilder requestBuilder = getClient().getHttpClient().prepareGet(requestUrl.toString());
+      BoundRequestBuilder requestBuilder = getClient().getHttpClient().prepareGet(requestUrl.toString());
 
       String labelQueryParam = getLabelQueryParam();
       if (labelQueryParam.length() > 0) {
@@ -364,7 +364,7 @@ public class BaseOperation<C extends KubernetesClient, T, L extends KubernetesRe
           requestUrl = new URL(requestUrl, "namespaces/" + metadataResource.getMetadata().getNamespace() + "/");
         }
         requestUrl = new URL(requestUrl, getResourceT() + "/" + metadataResource.getMetadata().getName());
-        AsyncHttpClient.BoundRequestBuilder requestBuilder = getClient().getHttpClient().prepareDelete(requestUrl.toString());
+        BoundRequestBuilder requestBuilder = getClient().getHttpClient().prepareDelete(requestUrl.toString());
         Future<Response> f = requestBuilder.execute();
         Response r = f.get();
         if (r.getStatusCode() != 200) {
@@ -426,7 +426,7 @@ public class BaseOperation<C extends KubernetesClient, T, L extends KubernetesRe
     return new URL(getNamespacedUrl(), name);
   }
 
-  protected T handleResponse(AsyncHttpClient.BoundRequestBuilder requestBuilder, int successStatusCode) throws ExecutionException, InterruptedException, KubernetesClientException, IOException {
+  protected T handleResponse(BoundRequestBuilder requestBuilder, int successStatusCode) throws ExecutionException, InterruptedException, KubernetesClientException, IOException {
     Future<Response> f = requestBuilder.execute();
     Response r = f.get();
     if (r.getStatusCode() != successStatusCode) {
@@ -437,7 +437,7 @@ public class BaseOperation<C extends KubernetesClient, T, L extends KubernetesRe
   }
 
   protected void handleDelete(URL requestUrl) throws ExecutionException, InterruptedException, KubernetesClientException, IOException {
-    AsyncHttpClient.BoundRequestBuilder requestBuilder = getClient().getHttpClient().prepareDelete(requestUrl.toString());
+    BoundRequestBuilder requestBuilder = getClient().getHttpClient().prepareDelete(requestUrl.toString());
     Future<Response> f = requestBuilder.execute();
     Response r = f.get();
     if (r.getStatusCode() != 200) {
@@ -447,19 +447,19 @@ public class BaseOperation<C extends KubernetesClient, T, L extends KubernetesRe
   }
 
   protected T handleCreate(T resource) throws ExecutionException, InterruptedException, KubernetesClientException, IOException {
-    AsyncHttpClient.BoundRequestBuilder requestBuilder = getClient().getHttpClient().preparePost(getNamespacedUrl().toString());
+    BoundRequestBuilder requestBuilder = getClient().getHttpClient().preparePost(getNamespacedUrl().toString());
     requestBuilder.setBody(mapper.writer().writeValueAsString(resource));
     return handleResponse(requestBuilder, 201);
   }
 
   protected T handleReplace(URL resourceUrl, T updated) throws ExecutionException, InterruptedException, KubernetesClientException, IOException {
-    AsyncHttpClient.BoundRequestBuilder requestBuilder = getClient().getHttpClient().preparePut(resourceUrl.toString());
+    BoundRequestBuilder requestBuilder = getClient().getHttpClient().preparePut(resourceUrl.toString());
     requestBuilder.setBody(mapper.writer().writeValueAsString(updated));
     return handleResponse(requestBuilder, 200);
   }
 
   protected T handleGet(URL resourceUrl) throws ExecutionException, InterruptedException, KubernetesClientException, IOException {
-    AsyncHttpClient.BoundRequestBuilder requestBuilder = getClient().getHttpClient().prepareGet(resourceUrl.toString());
+    BoundRequestBuilder requestBuilder = getClient().getHttpClient().prepareGet(resourceUrl.toString());
     return handleResponse(requestBuilder, 200);
   }
 

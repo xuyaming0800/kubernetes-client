@@ -15,13 +15,6 @@
  */
 package io.fabric8.kubernetes.client;
 
-import com.ning.http.client.AsyncHttpClient;
-import com.ning.http.client.AsyncHttpClientConfig;
-import com.ning.http.client.Realm;
-import com.ning.http.client.filter.FilterContext;
-import com.ning.http.client.filter.FilterException;
-import com.ning.http.client.filter.RequestFilter;
-import com.ning.http.client.providers.netty.NettyAsyncHttpProviderConfig;
 import io.fabric8.kubernetes.api.model.DoneableEndpoints;
 import io.fabric8.kubernetes.api.model.DoneableEvent;
 import io.fabric8.kubernetes.api.model.DoneableNamespace;
@@ -77,7 +70,14 @@ import io.fabric8.kubernetes.client.dsl.internal.SecretOperationsImpl;
 import io.fabric8.kubernetes.client.dsl.internal.ServiceAccountOperationsImpl;
 import io.fabric8.kubernetes.client.dsl.internal.ServiceOperationsImpl;
 import io.fabric8.kubernetes.client.internal.Utils;
-import org.jboss.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import org.asynchttpclient.AsyncHttpClient;
+import org.asynchttpclient.AsyncHttpClientConfig;
+import org.asynchttpclient.DefaultAsyncHttpClient;
+import org.asynchttpclient.Realm;
+import org.asynchttpclient.filter.FilterContext;
+import org.asynchttpclient.filter.FilterException;
+import org.asynchttpclient.filter.RequestFilter;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
@@ -147,7 +147,7 @@ public class DefaultKubernetesClient implements KubernetesClient {
       if (keyManagers != null || trustManagers != null) {
         if (trustManagers == null && config.isTrustCerts()) {
           trustManagers = InsecureTrustManagerFactory.INSTANCE.getTrustManagers();
-          clientConfigBuilder.setHostnameVerifier(null);
+          clientConfigBuilder.setAcceptAnyCertificate(true);
         }
         SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
         sslContext.init(keyManagers, trustManagers, new SecureRandom());
@@ -172,11 +172,9 @@ public class DefaultKubernetesClient implements KubernetesClient {
         });
       }
 
-      NettyAsyncHttpProviderConfig nettyConfig = new NettyAsyncHttpProviderConfig();
-      nettyConfig.setWebSocketMaxFrameSize(65536);
-      clientConfigBuilder.setAsyncHttpClientProviderConfig(nettyConfig);
+      clientConfigBuilder.setWebSocketMaxFrameSize(65536);
 
-      this.httpClient = new AsyncHttpClient(clientConfigBuilder.build());
+      this.httpClient = new DefaultAsyncHttpClient(clientConfigBuilder.build());
     } catch (UnrecoverableKeyException | NoSuchAlgorithmException | KeyStoreException | KeyManagementException | InvalidKeySpecException | IOException | CertificateException e) {
       throw new KubernetesClientException("Could not create HTTP client", e);
     }

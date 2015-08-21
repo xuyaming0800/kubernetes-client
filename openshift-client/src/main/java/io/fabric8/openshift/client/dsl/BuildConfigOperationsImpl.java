@@ -15,8 +15,6 @@
  */
 package io.fabric8.openshift.client.dsl;
 
-import io.fabric8.kubernetes.client.internal.com.ning.http.client.AsyncHttpClient;
-import io.fabric8.kubernetes.client.internal.com.ning.http.client.Response;
 import io.fabric8.kubernetes.api.model.Status;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.BuildConfigClientResource;
@@ -30,6 +28,8 @@ import io.fabric8.openshift.api.model.BuildRequest;
 import io.fabric8.openshift.api.model.DoneableBuildConfig;
 import io.fabric8.openshift.api.model.WebHookTrigger;
 import io.fabric8.openshift.client.OpenShiftClient;
+import org.asynchttpclient.BoundRequestBuilder;
+import org.asynchttpclient.Response;
 
 import java.net.URL;
 import java.util.concurrent.Future;
@@ -87,7 +87,7 @@ public class BuildConfigOperationsImpl extends OpenshiftOperation<OpenShiftClien
   public Void instantiate(BuildRequest request) {
     try {
       URL instantiationUrl = new URL(getResourceUrl().toString() + "/instantiate");
-      AsyncHttpClient.BoundRequestBuilder requestBuilder = getClient().getHttpClient().preparePost(instantiationUrl.toString());
+      BoundRequestBuilder requestBuilder = getClient().getHttpClient().preparePost(instantiationUrl.toString());
       requestBuilder.setBody(BaseOperation.mapper.writer().writeValueAsString(request));
       handleResponse(requestBuilder, 201);
     } catch (Exception e) {
@@ -102,7 +102,7 @@ public class BuildConfigOperationsImpl extends OpenshiftOperation<OpenShiftClien
        //TODO: This needs some attention.
        URL webhooksUrl = new URL(getResourceUrl().toString() + "/webhooks/");
        URL triggerUrl = new URL(webhooksUrl, secret+"/"+triggerType);
-       AsyncHttpClient.BoundRequestBuilder requestBuilder = getClient().getHttpClient().preparePost(triggerUrl.toString());
+       BoundRequestBuilder requestBuilder = getClient().getHttpClient().preparePost(triggerUrl.toString());
        requestBuilder.addHeader("Content-Type", "application/json");
        requestBuilder.addHeader("X-Github-Event", "push");
        requestBuilder.setBody(BaseOperation.mapper.writer().writeValueAsString(trigger));

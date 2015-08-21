@@ -15,11 +15,15 @@
  */
 package io.fabric8.kubernetes.client.internal;
 
-import com.ning.http.util.Base64;
 import net.oauth.signature.pem.PEMReader;
 import net.oauth.signature.pem.PKCS1EncodedKeySpec;
+import org.asynchttpclient.util.Base64;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
 import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.KeyStoreException;

@@ -15,13 +15,13 @@
  */
 package io.fabric8.openshift.client.dsl;
 
-import io.fabric8.kubernetes.client.internal.com.ning.http.client.AsyncHttpClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.ProcessableClientResource;
 import io.fabric8.openshift.api.model.DoneableTemplate;
 import io.fabric8.openshift.api.model.Template;
 import io.fabric8.openshift.api.model.TemplateList;
 import io.fabric8.openshift.client.OpenShiftClient;
+import org.asynchttpclient.BoundRequestBuilder;
 
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -39,7 +39,7 @@ public class TemplateOperationsImpl extends OpenshiftOperation<OpenShiftClient, 
 
   @Override
   public Template process(Template item) {
-    AsyncHttpClient.BoundRequestBuilder requestBuilder = null;
+    BoundRequestBuilder requestBuilder = null;
     try {
       requestBuilder = getClient().getHttpClient().preparePost(getProcessUrl().toString());
 

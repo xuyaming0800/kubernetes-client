@@ -16,16 +16,16 @@
 package io.fabric8.kubernetes.client.dsl.internal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ning.http.client.AsyncHttpClient;
-import com.ning.http.client.ws.DefaultWebSocketListener;
-import com.ning.http.client.ws.WebSocket;
-import com.ning.http.client.ws.WebSocketUpgradeHandler;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.WatchEvent;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.Watcher;
+import org.asynchttpclient.BoundRequestBuilder;
+import org.asynchttpclient.ws.DefaultWebSocketListener;
+import org.asynchttpclient.ws.WebSocket;
+import org.asynchttpclient.ws.WebSocketUpgradeHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,7 +70,7 @@ public class WatchConnectionManager<T, L extends KubernetesResourceList> impleme
   private final void runWatch() throws MalformedURLException, ExecutionException, InterruptedException {
     URL requestUrl = baseOperation.getResourceUrl();
 
-    AsyncHttpClient.BoundRequestBuilder requestBuilder = baseOperation.getClient().getHttpClient().prepareGet(requestUrl.toString().replaceFirst("^http", "ws"));
+    BoundRequestBuilder requestBuilder = baseOperation.getClient().getHttpClient().prepareGet(requestUrl.toString().replaceFirst("^http", "ws"));
 
     String labelQueryParam = baseOperation.getLabelQueryParam();
     if (labelQueryParam.length() > 0) {
