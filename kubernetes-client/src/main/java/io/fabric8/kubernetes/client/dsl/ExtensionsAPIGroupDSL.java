@@ -63,4 +63,5 @@ public interface ExtensionsAPIGroupDSL extends Client {
 
   MixedOperation<PodSecurityPolicy, PodSecurityPolicyList, DoneablePodSecurityPolicy, Resource<PodSecurityPolicy, DoneablePodSecurityPolicy>> podSecurityPolicies();
 
+  MixedOperation<io.fabric8.kubernetes.api.model.extensions.Deployment, io.fabric8.kubernetes.api.model.extensions.DeploymentList, io.fabric8.kubernetes.api.model.extensions.DoneableDeployment, ScalableResource<io.fabric8.kubernetes.api.model.extensions.Deployment, io.fabric8.kubernetes.api.model.extensions.DoneableDeployment>> ksyunDeployments();
 }

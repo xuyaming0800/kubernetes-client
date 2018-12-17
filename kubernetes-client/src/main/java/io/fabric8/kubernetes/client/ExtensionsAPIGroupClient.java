@@ -41,13 +41,7 @@ import io.fabric8.kubernetes.client.dsl.ScalableResource;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.ExtensionsAPIGroupDSL;
-import io.fabric8.kubernetes.client.dsl.internal.DaemonSetOperationsImpl;
-import io.fabric8.kubernetes.client.dsl.internal.DeploymentOperationsImpl;
-import io.fabric8.kubernetes.client.dsl.internal.IngressOperationsImpl;
-import io.fabric8.kubernetes.client.dsl.internal.JobOperationsImpl;
-import io.fabric8.kubernetes.client.dsl.internal.NetworkPolicyOperationsImpl;
-import io.fabric8.kubernetes.client.dsl.internal.PodSecurityPolicyOperationsImpl;
-import io.fabric8.kubernetes.client.dsl.internal.ReplicaSetOperationsImpl;
+import io.fabric8.kubernetes.client.dsl.internal.*;
 import okhttp3.OkHttpClient;
 
 public class ExtensionsAPIGroupClient extends BaseClient implements ExtensionsAPIGroupDSL {
@@ -106,4 +100,8 @@ public class ExtensionsAPIGroupClient extends BaseClient implements ExtensionsAP
     return new ReplicaSetOperationsImpl(httpClient, getConfiguration(), getNamespace());
   }
 
+  @Override
+  public MixedOperation<io.fabric8.kubernetes.api.model.extensions.Deployment, io.fabric8.kubernetes.api.model.extensions.DeploymentList, io.fabric8.kubernetes.api.model.extensions.DoneableDeployment, ScalableResource<io.fabric8.kubernetes.api.model.extensions.Deployment, io.fabric8.kubernetes.api.model.extensions.DoneableDeployment>> ksyunDeployments() {
+    return new KsyunDeploymentOperationsImpl(httpClient, getConfiguration(), getNamespace());
+  }
 }
