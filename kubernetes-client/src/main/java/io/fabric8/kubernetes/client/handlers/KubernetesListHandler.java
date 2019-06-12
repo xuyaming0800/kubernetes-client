@@ -17,6 +17,7 @@ package io.fabric8.kubernetes.client.handlers;
 
 import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.Watcher;
+import java.util.function.Predicate;
 import okhttp3.OkHttpClient;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesList;
@@ -47,6 +48,11 @@ public class KubernetesListHandler implements ResourceHandler<KubernetesList, Ku
   }
 
   @Override
+  public String getApiVersion() {
+    return "v1";
+  }
+
+  @Override
   public KubernetesList create(OkHttpClient client, Config config, String namespace, KubernetesList item) {
     return new KubernetesListOperationsImpl(client, config, namespace, null, true, false, false, item, null).create();
   }
@@ -56,7 +62,7 @@ public class KubernetesListHandler implements ResourceHandler<KubernetesList, Ku
     List<HasMetadata> replacedItems = new ArrayList<>();
 
     for (HasMetadata metadata : item.getItems()) {
-      ResourceHandler<HasMetadata, HasMetadataVisitiableBuilder> handler = Handlers.get(item.getKind());
+      ResourceHandler<HasMetadata, HasMetadataVisitiableBuilder> handler = Handlers.get(item.getKind(), item.getApiVersion());
       if (handler == null) {
         LOGGER.warn("No handler found for:" + item.getKind() + ". Ignoring");
       } else {
@@ -71,7 +77,7 @@ public class KubernetesListHandler implements ResourceHandler<KubernetesList, Ku
     List<HasMetadata> replacedItems = new ArrayList<>();
 
     for (HasMetadata metadata : item.getItems()) {
-      ResourceHandler<HasMetadata, HasMetadataVisitiableBuilder> handler = Handlers.get(item.getKind());
+      ResourceHandler<HasMetadata, HasMetadataVisitiableBuilder> handler = Handlers.get(item.getKind(), item.getApiVersion());
       if (handler == null) {
         LOGGER.warn("No handler found for:" + item.getKind() + ". Ignoring");
       } else {
@@ -103,6 +109,11 @@ public class KubernetesListHandler implements ResourceHandler<KubernetesList, Ku
 
   @Override
   public KubernetesList waitUntilReady(OkHttpClient client, Config config, String namespace, KubernetesList item, long amount, TimeUnit timeUnit) throws InterruptedException {
+    throw new UnsupportedOperationException("Watch is not supported on KubernetesList.");
+  }
+
+  @Override
+  public KubernetesList waitUntilCondition(OkHttpClient client, Config config, String namespace, KubernetesList item, Predicate<KubernetesList> condition, long amount, TimeUnit timeUnit) throws InterruptedException {
     throw new UnsupportedOperationException("Watch is not supported on KubernetesList.");
   }
 }

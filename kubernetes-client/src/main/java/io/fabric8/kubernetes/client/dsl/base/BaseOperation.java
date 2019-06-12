@@ -21,12 +21,9 @@ import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.LabelSelector;
 import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.RootPaths;
-import io.fabric8.kubernetes.client.Config;
-import io.fabric8.kubernetes.client.KubernetesClientException;
-import io.fabric8.kubernetes.client.OperationInfo;
-import io.fabric8.kubernetes.client.Watch;
-import io.fabric8.kubernetes.client.Watcher;
+import io.fabric8.kubernetes.client.*;
 import io.fabric8.kubernetes.client.dsl.Deletable;
 import io.fabric8.kubernetes.client.dsl.EditReplacePatchDeletable;
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable;
@@ -44,21 +41,26 @@ import io.fabric8.kubernetes.client.internal.readiness.Readiness;
 import io.fabric8.kubernetes.client.utils.URLUtils;
 import io.fabric8.kubernetes.client.utils.Utils;
 import io.fabric8.kubernetes.client.utils.WatcherToggle;
-import okhttp3.HttpUrl;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.ParameterizedType;
+import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
+import okhttp3.HttpUrl;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
 
 public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneable<T>, R extends Resource<T, D>>
   extends OperationSupport
@@ -76,53 +78,32 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
   private final Map<String, String[]> labelsNotIn;
   private final Map<String, String> fields;
 
-  private final Class<T> type;
-  private final Class<L> listType;
-  private final Class<D> doneableType;
   private final String resourceVersion;
   private final Boolean reloadingFromServer;
   private final long gracePeriodSeconds;
 
   private boolean reaping;
   protected Reaper reaper;
-  protected String apiGroupVersion;
+  protected String apiVersion;
 
-  protected BaseOperation(OkHttpClient client, Config config, String apiGroup, String apiVersion, String resourceT, String namespace, String name, Boolean cascading, T item, String resourceVersion, Boolean reloadingFromServer, long gracePeriodSeconds, Map<String, String> labels, Map<String, String> labelsNot, Map<String, String[]> labelsIn, Map<String, String[]> labelsNotIn, Map<String, String> fields)  {
-    super(client, config, apiGroup, apiVersion(item, apiVersion), resourceT, namespace, name(item, name));
-    this.cascading = cascading;
-    this.item = item;
-    this.reloadingFromServer = reloadingFromServer;
-    this.type = (Class<T>) ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0];
-    this.listType = (Class<L>) ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[1];
-    this.doneableType = (Class<D>) ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[2];
+  protected Class<T> type;
+  protected Class<L> listType;
+  protected Class<D> doneableType;
+
+  protected BaseOperation(OperationContext ctx) {
+    super(ctx);
+    this.cascading = ctx.getCascading();
+    this.item = (T) ctx.getItem();
+    this.reloadingFromServer = ctx.getReloadingFromServer();
+    this.resourceVersion = ctx.getResourceVersion();
+    this.gracePeriodSeconds = ctx.getGracePeriodSeconds();
+    this.labels = ctx.getLabels();
+    this.labelsNot = ctx.getLabelsNot();
+    this.labelsIn = ctx.getLabelsIn();
+    this.labelsNotIn = ctx.getLabelsNotIn();
+    this.fields = ctx.getFields();
     this.reaper = null;
-    this.resourceVersion = resourceVersion;
-    this.gracePeriodSeconds = gracePeriodSeconds;
-    this.labels = labels;
-    this.labelsNot = labelsNot;
-    this.labelsIn = labelsIn;
-    this.labelsNotIn = labelsNotIn;
-    this.fields = fields;
   }
-
-  protected BaseOperation(OkHttpClient client, Config config, String apiGroup, String apiVersion, String resourceT, String namespace, String name, Boolean cascading, T item, String resourceVersion, Boolean reloadingFromServer, Class<T> type, Class<L> listType, Class<D> doneableType) {
-    super(client, config, apiGroup, apiVersion(item, apiVersion), resourceT, namespace, name(item, name));
-    this.cascading = cascading;
-    this.item = item;
-    this.resourceVersion = resourceVersion;
-    this.reloadingFromServer = reloadingFromServer;
-    this.type = type;
-    this.listType = listType;
-    this.doneableType = doneableType;
-    this.reaper = null;
-    this.gracePeriodSeconds = -1;
-    this.labels = new TreeMap<>();
-    this.labelsNot = new TreeMap<>();
-    this.labelsIn = new TreeMap<>();
-    this.labelsNotIn = new TreeMap<>();
-    this.fields = new TreeMap<>();
-  }
-
 
   /**
    * Returns the name and falls back to the item name.
@@ -141,33 +122,36 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
     return null;
   }
 
-  /**
-   * Returns the api version falling back to the items apiVersion if not null.
-   * @param <T>
-   * @param item
-   * @param apiVersion
-   * @return
-   */
-  private static <T> String apiVersion(T item, String apiVersion) {
-    if (apiVersion != null && !apiVersion.isEmpty()) {
-      return trimVersion(apiVersion);
-    } else if (item instanceof HasMetadata) {
-      return trimVersion(((HasMetadata)item).getApiVersion());
-    }
-    return null;
+
+  public BaseOperation<T,L,D,R> newInstance(OperationContext context) {
+    return new BaseOperation<T, L, D, R>(context);
   }
 
   /**
-   * Separates apiVersion for apiGroup/apiVersion combination.
-   * @param apiVersion  The apiVersion or apiGroup/apiVersion combo.
-   * @return            Just the apiVersion part without the apiGroup.
-     */
-  private static String trimVersion(String apiVersion) {
-    if (apiVersion == null) {
-      return null;
-    } else {
-      String[] versionParts = apiVersion.split("/");
-      return versionParts[versionParts.length - 1];
+   * Helper method for list() and list(limit, continue) methods
+   *
+   * @param url
+   * @return list of corresponding Kubernetes Resources
+   */
+  private L listRequestHelper(URL url) {
+    try {
+      HttpUrl.Builder requestUrlBuilder = HttpUrl.get(url).newBuilder();
+
+      addQueryStringParam(requestUrlBuilder, "labelSelector", getLabelQueryParam());
+      addQueryStringParam(requestUrlBuilder, "fieldSelector", getFieldQueryParam());
+
+      Request.Builder requestBuilder = new Request.Builder().get().url(requestUrlBuilder.build());
+      L answer = handleResponse(requestBuilder, listType);
+      updateApiVersion(answer);
+      return answer;
+    } catch (InterruptedException | ExecutionException | IOException e) {
+      throw KubernetesClientException.launderThrowable(forOperationType("list"), e);
+    }
+  }
+
+  private void addQueryStringParam(HttpUrl.Builder requestUrlBuilder, String name, String value) {
+    if(Utils.isNotNullOrEmpty(value)) {
+      requestUrlBuilder.addQueryParameter(name, value);
     }
   }
 
@@ -184,10 +168,33 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
       }
       return answer;
     } catch (KubernetesClientException e) {
-      if (e.getCode() != 404) {
+      if (e.getCode() != HttpURLConnection.HTTP_NOT_FOUND) {
         throw e;
       }
       return null;
+    }
+  }
+
+  @Override
+  public T require() throws ResourceNotFoundException {
+    try {
+      T answer = getMandatory();
+      if (answer == null) {
+        throw new ResourceNotFoundException("The resource you request doesn't exist or couldn't be fetched.");
+      }
+      if (answer instanceof HasMetadata) {
+        HasMetadata hasMetadata = (HasMetadata) answer;
+        updateApiVersion(hasMetadata);
+      } else if (answer instanceof KubernetesResourceList) {
+        KubernetesResourceList list = (KubernetesResourceList) answer;
+        updateApiVersion(list);
+      }
+      return answer;
+    } catch (KubernetesClientException e) {
+      if (e.getCode() != HttpURLConnection.HTTP_NOT_FOUND) {
+        throw e;
+      }
+      throw new ResourceNotFoundException("Resource not found : " + e.getMessage());
     }
   }
 
@@ -210,12 +217,12 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
       return handleGet(requestUrl);
     } catch (KubernetesClientException e) {
       throw KubernetesClientException.launderThrowable(forOperationType("get"), e);
-      //if (e.getCode() != 404) {
+      //if (e.getCode() != HttpURLConnection.HTTP_NOT_FOUND) {
      //   throw e;
       //} else {
       //  String resourceType = type != null ? type.getSimpleName() : "Resource";
       //  String msg = resourceType + " with name: [" + getName() + "]  not found in namespace: [" + (Utils.isNotNullOrEmpty(getNamespace()) ? getName() : getConfig().getNamespace()) + "]";
-     //   throw new KubernetesClientException(msg, 404, new StatusBuilder().withCode(404).withMessage(msg).build());
+     //   throw new KubernetesClientException(msg, HttpURLConnection.HTTP_NOT_FOUND, new StatusBuilder().withCode(HttpURLConnection.HTTP_NOT_FOUND).withMessage(msg).build());
      // }
     } catch (InterruptedException | ExecutionException | IOException e) {
       throw KubernetesClientException.launderThrowable(forOperationType("get"), e);
@@ -228,7 +235,7 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
       Request.Builder req = new Request.Builder().get().url(requestUrl);
       return handleResponse(req, RootPaths.class);
     } catch (KubernetesClientException e) {
-      if (e.getCode() != 404) {
+      if (e.getCode() != HttpURLConnection.HTTP_NOT_FOUND) {
         throw e;
       }
       return null;
@@ -247,63 +254,34 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
     if (name == null || name.length() == 0) {
       throw new IllegalArgumentException("Name must be provided.");
     }
-    try {
-      return (R) getClass()
-        .getConstructor(OkHttpClient.class, getConfigType(), String.class, String.class, String.class, Boolean.class, getType(), String.class, Boolean.class, long.class, Map.class, Map.class, Map.class, Map.class, Map.class)
-        .newInstance(client, getConfig(), getAPIVersion(), getNamespace(), name, isCascading(), getItem(), getResourceVersion(), isReloadingFromServer(), getGracePeriodSeconds(), getLabels(), getLabelsNot(), getLabelsIn(), getLabelsNotIn(), getFields());
-    } catch (Throwable t) {
-      throw KubernetesClientException.launderThrowable(t);
-    }
+    return (R) newInstance(context.withName(name));
   }
 
   @Override
   public Replaceable<T, T> lockResourceVersion(String resourceVersion) {
-    try {
-      return getClass()
-        .getConstructor(OkHttpClient.class, getConfigType(), String.class, String.class, String.class, Boolean.class, getType(), String.class, Boolean.class, long.class, Map.class, Map.class, Map.class, Map.class, Map.class)
-        .newInstance(client, getConfig(), getAPIVersion(), getNamespace(), getName(), isCascading(), getItem(), resourceVersion, isReloadingFromServer(), getGracePeriodSeconds(), getLabels(), getLabelsNot(), getLabelsIn(), getLabelsNotIn(), getFields());
-    } catch (Throwable t) {
-      throw KubernetesClientException.launderThrowable(t);
-    }
+    return newInstance(context.withResourceVersion(resourceVersion));
   }
 
   @Override
   public NonNamespaceOperation<T, L, D, R> inNamespace(String namespace) {
-    try {
-      return getClass()
-        .getConstructor(OkHttpClient.class, getConfigType(), String.class, String.class, String.class, Boolean.class, getType(), String.class, Boolean.class, long.class, Map.class, Map.class, Map.class, Map.class, Map.class)
-        .newInstance(client, getConfig(), getAPIVersion(), namespace, getName(), isCascading(), getItem(), getResourceVersion(), isReloadingFromServer(), getGracePeriodSeconds(), getLabels(), getLabelsNot(), getLabelsIn(), getLabelsNotIn(), getFields());
-    } catch (Throwable t) {
-      throw KubernetesClientException.launderThrowable(t);
-    }
+    return newInstance(context.withNamespace(namespace));
   }
 
   @Override
   public NonNamespaceOperation<T, L, D, R> inAnyNamespace() {
-    return inNamespace(null);
+    Config updated = new ConfigBuilder(config).withNamespace(null).build();
+    return newInstance(context.withConfig(updated).withNamespace(null));
   }
 
 
   @Override
   public EditReplacePatchDeletable<T, T, D, Boolean> cascading(boolean cascading) {
-    try {
-      return getClass()
-        .getConstructor(OkHttpClient.class, getConfigType(), String.class, String.class, String.class, Boolean.class, getType(), String.class, Boolean.class, long.class, Map.class, Map.class, Map.class, Map.class, Map.class)
-        .newInstance(client, getConfig(), getAPIVersion(), getNamespace(), getName(), cascading, getItem(), getResourceVersion(), isReloadingFromServer(), getGracePeriodSeconds(), getLabels(), getLabelsNot(), getLabelsIn(), getLabelsNotIn(), getFields());
-    } catch (Throwable t) {
-      throw KubernetesClientException.launderThrowable(t);
-    }
+    return newInstance(context.withCascading(cascading));
   }
 
   @Override
   public R load(InputStream is) {
-    try {
-      return (R) getClass()
-        .getConstructor(OkHttpClient.class, getConfigType(), String.class, String.class, String.class, Boolean.class, getType(), String.class, Boolean.class, long.class, Map.class, Map.class, Map.class, Map.class, Map.class)
-        .newInstance(client, getConfig(), getAPIVersion(), getNamespace(), getName(), isCascading(), unmarshal(is, type), getResourceVersion(), isReloadingFromServer(), getGracePeriodSeconds(), getLabels(), getLabelsNot(), getLabelsIn(), getLabelsNotIn(), getFields());
-    } catch (Throwable t) {
-      throw KubernetesClientException.launderThrowable(t);
-    }
+    return (R) newInstance(context.withItem(unmarshal(is, type)));
   }
 
   @Override
@@ -331,13 +309,7 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
 
   @Override
   public Gettable<T> fromServer() {
-    try {
-      return (R) getClass()
-        .getConstructor(OkHttpClient.class, getConfigType(), String.class, String.class, String.class, Boolean.class, getType(), String.class, Boolean.class, long.class, Map.class, Map.class, Map.class, Map.class, Map.class)
-        .newInstance(client, getConfig(), getAPIVersion(), getNamespace(), getName(), isCascading(), getItem(), getResourceVersion(), true, getGracePeriodSeconds(), getLabels(), getLabelsNot(), getLabelsIn(), getLabelsNotIn(), getFields());
-    } catch (Throwable t) {
-      throw KubernetesClientException.launderThrowable(t);
-    }
+    return newInstance(context.withReloadingFromServer(true));
   }
 
   @Override
@@ -346,7 +318,7 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
       if (resources.length > 1) {
         throw new IllegalArgumentException("Too many items to create.");
       } else if (resources.length == 1) {
-        return handleCreate(resources[0]);
+        return withItem(resources[0]).create();
       } else if (getItem() == null) {
         throw new IllegalArgumentException("Nothing to create.");
       } else {
@@ -359,14 +331,11 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
 
   @Override
   public D createNew() throws KubernetesClientException {
-    final Function<T, T> visitor = new Function<T, T>() {
-      @Override
-      public T apply(T resource) {
-        try {
-          return create(resource);
-        } catch (Exception e) {
-          throw KubernetesClientException.launderThrowable(forOperationType("create"), e);
-        }
+    final Function<T, T> visitor = resource -> {
+      try {
+        return create(resource);
+      } catch (Exception e) {
+        throw KubernetesClientException.launderThrowable(forOperationType("create"), e);
       }
     };
 
@@ -380,14 +349,11 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
 
   @Override
   public D createOrReplaceWithNew() throws KubernetesClientException {
-    final Function<T, T> visitor = new Function<T, T>() {
-      @Override
-      public T apply(T resource) {
-        try {
-          return createOrReplace(resource);
-        } catch (Exception e) {
-          throw KubernetesClientException.launderThrowable(forOperationType("create or replace"), e);
-        }
+    final Function<T, T> visitor = resource -> {
+      try {
+        return createOrReplace(resource);
+      } catch (Exception e) {
+        throw KubernetesClientException.launderThrowable(forOperationType("create or replace"), e);
       }
     };
 
@@ -582,23 +548,22 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
 
   public L list() throws KubernetesClientException {
     try {
-      HttpUrl.Builder requestUrlBuilder = HttpUrl.get(getNamespacedUrl()).newBuilder();
+      return listRequestHelper(getNamespacedUrl());
+    } catch (IOException e) {
+      throw KubernetesClientException.launderThrowable(forOperationType("list"), e);
+    }
+  }
 
-      String labelQueryParam = getLabelQueryParam();
-      if (Utils.isNotNullOrEmpty(labelQueryParam)) {
-        requestUrlBuilder.addQueryParameter("labelSelector", labelQueryParam);
+  public L list(Integer limitVal, String continueVal) throws KubernetesClientException {
+    try {
+      URL url = getNamespacedUrl();
+      if(limitVal != null && continueVal == null) {
+        url = new URL(URLUtils.join(url.toString(), "?limit=" + limitVal.toString()));
+      } else if(continueVal != null) {
+        url = new URL(URLUtils.join(url.toString(), "?continue=" + continueVal + "&limit=" + limitVal.toString() ));
       }
-
-      String fieldQueryString = getFieldQueryParam();
-      if (Utils.isNotNullOrEmpty(fieldQueryString)) {
-        requestUrlBuilder.addQueryParameter("fieldSelector", fieldQueryString);
-      }
-
-      Request.Builder requestBuilder = new Request.Builder().get().url(requestUrlBuilder.build());
-      L answer = handleResponse(requestBuilder, listType);
-      updateApiVersion(answer);
-      return answer;
-    } catch (InterruptedException | ExecutionException | IOException e) {
+      return listRequestHelper(url);
+    } catch (MalformedURLException e) {
       throw KubernetesClientException.launderThrowable(forOperationType("list"), e);
     }
   }
@@ -619,7 +584,7 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
         deleteThis();
         return true;
       } catch (KubernetesClientException e) {
-        if (e.getCode() != 404) {
+        if (e.getCode() != HttpURLConnection.HTTP_NOT_FOUND) {
           throw e;
         }
         return false;
@@ -629,7 +594,7 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
         deleteList();
         return true;
       } catch (KubernetesClientException e) {
-        if (e.getCode() != 404) {
+        if (e.getCode() != HttpURLConnection.HTTP_NOT_FOUND) {
           throw e;
         }
         return false;
@@ -651,25 +616,21 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
         updateApiVersionResource(item);
 
         try {
-          R op = createItemOperation(item);
+          R op = (R) withItem(item);
           deleted &= op.delete();
         } catch (KubernetesClientException e) {
-          if (e.getCode() != 404) {
+          if (e.getCode() != HttpURLConnection.HTTP_NOT_FOUND) {
             throw e;
           }
           return false;
-        } catch (NoSuchMethodException | IllegalAccessException | InstantiationException | InvocationTargetException e) {
-          throw KubernetesClientException.launderThrowable(forOperationType("delete"), e);
         }
       }
     }
     return deleted;
   }
 
-  protected R createItemOperation(T item) throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
-    return (R) getClass()
-              .getConstructor(OkHttpClient.class, getConfigType(), String.class, String.class, String.class, Boolean.class, getType(), String.class, Boolean.class, long.class, Map.class, Map.class, Map.class, Map.class, Map.class)
-              .newInstance(client, getConfig(), getAPIVersion(), getNamespace(), getName(), isCascading(), item, getResourceVersion(), true, getGracePeriodSeconds(), getLabels(), getLabelsNot(), getLabelsIn(), getLabelsNotIn(), getFields());
+  public BaseOperation<T,L,D,R> withItem(T item) {
+    return newInstance(context.withItem(item));
   }
 
   void deleteThis() throws KubernetesClientException {
@@ -691,13 +652,7 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
 
   @Override
   public Watchable<Watch, Watcher<T>> withResourceVersion(String resourceVersion) {
-    try {
-      return getClass()
-        .getConstructor(OkHttpClient.class, getConfigType(), String.class, String.class, String.class, Boolean.class, getType(), String.class, Boolean.class, long.class, Map.class, Map.class, Map.class, Map.class, Map.class)
-        .newInstance(client, getConfig(), getAPIVersion(), getNamespace(), getName(), isCascading(), getItem(), resourceVersion, isReloadingFromServer(), getGracePeriodSeconds(), getLabels(), getLabelsNot(), getLabelsIn(), getLabelsNotIn(), getFields());
-    } catch (Throwable t) {
-      throw KubernetesClientException.launderThrowable(t);
-    }
+    return newInstance(context.withResourceVersion(resourceVersion));
   }
 
   public Watch watch(final Watcher<T> watcher) throws KubernetesClientException {
@@ -883,13 +838,7 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
   @Override
   public Deletable<Boolean> withGracePeriod(long gracePeriodSeconds)
   {
-    try {
-      return getClass()
-        .getConstructor(OkHttpClient.class, getConfigType(), String.class, String.class, String.class, Boolean.class, getType(), String.class, Boolean.class, long.class, Map.class, Map.class, Map.class, Map.class, Map.class)
-        .newInstance(client, getConfig(), getAPIVersion(), getNamespace(), getName(), isCascading(), getItem(), getResourceVersion(), isReloadingFromServer(), gracePeriodSeconds, getLabels(), getLabelsNot(), getLabelsIn(), getLabelsNotIn(), getFields());
-    } catch (Throwable t) {
-      throw KubernetesClientException.launderThrowable(t);
-    }
+    return newInstance(context.withGracePeriodSeconds(gracePeriodSeconds));
   }
 
   protected Class<? extends Config> getConfigType() {
@@ -897,7 +846,9 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
   }
 
   /**
-   * Updates the list or single item if it has a missing or incorrect apiVersion
+   * Updates the list or single item if it has a missing or incorrect apiGroupVersion
+   *
+   * @param resource resource object
    */
   protected void updateApiVersionResource(Object resource) {
     if (resource instanceof HasMetadata) {
@@ -910,11 +861,13 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
   }
 
   /**
-   * Updates the list items if they have missing or default apiVersion values and the resource is currently
+   * Updates the list items if they have missing or default apiGroupVersion values and the resource is currently
    * using API Groups with custom version strings
+   *
+   * @param list Kubernetes resource list
    */
   protected void updateApiVersion(KubernetesResourceList list) {
-    String version = getApiGroupVersion();
+    String version = getApiVersion();
     if (list != null && version != null && version.length() > 0) {
       List items = list.getItems();
       if (items != null) {
@@ -929,11 +882,13 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
 
 
   /**
-   * Updates the resource if it has missing or default apiVersion values and the resource is currently
+   * Updates the resource if it has missing or default apiGroupVersion values and the resource is currently
    * using API Groups with custom version strings
+   *
+   * @param hasMetadata object whose api version needs to be updated
    */
   protected void updateApiVersion(HasMetadata hasMetadata) {
-    String version = getApiGroupVersion();
+    String version = getApiVersion();
     if (hasMetadata != null && version != null && version.length() > 0) {
       String current = hasMetadata.getApiVersion();
       // lets overwrite the api version if its currently missing, the resource uses an API Group with '/'
@@ -944,15 +899,17 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
     }
   }
 
-  public String getApiGroupVersion() {
-    return apiGroupVersion;
+  public String getApiVersion() {
+    return apiVersion;
   }
 
   /**
    * Return true if this is an API Group where the versions include a slash in them
+   *
+   * @return boolean value indicating whether API group or not
    */
   public boolean isApiGroup() {
-    return apiGroupVersion != null && apiGroupVersion.indexOf('/') > 0;
+    return apiVersion != null && apiVersion.indexOf('/') > 0;
   }
 
   @Override
@@ -961,28 +918,37 @@ public class BaseOperation<T, L extends KubernetesResourceList, D extends Doneab
     return i instanceof HasMetadata && Readiness.isReady((HasMetadata)i);
   }
 
-  protected T waitUntilExists(long timeoutInMillis) throws InterruptedException {
-    long end = System.currentTimeMillis() + timeoutInMillis;
-    while (System.currentTimeMillis() < end) {
-      T item = get();
-      if (item != null) {
-        return item;
-      }
-
-      // in the future, should probably combine this simple waiting loop with a watcher
-      Thread.sleep(1000);
-    }
-
-    T item = get();
-    if (item != null) {
-      return item;
-    }
-
-    throw new IllegalArgumentException(type.getSimpleName() + " with name:[" + name + "] in namespace:[" + namespace + "] not found!");
+  protected T waitUntilExists(long amount, TimeUnit timeUnit) throws InterruptedException {
+    return waitUntilCondition(Objects::nonNull, amount, timeUnit);
   }
 
   @Override
   public T waitUntilReady(long amount, TimeUnit timeUnit) throws InterruptedException {
-    return waitUntilExists(timeUnit.toMillis(amount));
+    return waitUntilExists(amount, timeUnit);
+  }
+
+  @Override
+  public T waitUntilCondition(Predicate<T> condition, long amount, TimeUnit timeUnit)
+    throws InterruptedException {
+
+    long timeoutInMillis = timeUnit.toNanos(amount);
+
+    long end = System.nanoTime() + timeoutInMillis;
+    while (System.nanoTime() < end) {
+      T item = get();
+      if (condition.test(item)) {
+        return item;
+      }
+
+      // in the future, this should probably be more intelligent
+      Thread.sleep(1000);
+    }
+
+    T item = get();
+    if (condition.test(item)) {
+      return item;
+    }
+
+    throw new IllegalArgumentException(type.getSimpleName() + " with name:[" + name + "] in namespace:[" + namespace + "] not found!");
   }
 }

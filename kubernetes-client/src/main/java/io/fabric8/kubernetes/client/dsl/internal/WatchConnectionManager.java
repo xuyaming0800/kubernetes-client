@@ -81,7 +81,10 @@ public class WatchConnectionManager<T extends HasMetadata, L extends KubernetesR
     this.websocketTimeout = websocketTimeout;
     this.maxIntervalExponent = maxIntervalExponent;
 
-    this.clonedClient = client.newBuilder().readTimeout(this.websocketTimeout, TimeUnit.MILLISECONDS).build();
+    this.clonedClient = client.newBuilder()
+      .pingInterval(30, TimeUnit.SECONDS)
+      .readTimeout(this.websocketTimeout, TimeUnit.MILLISECONDS)
+      .build();
 
     // The URL is created, validated and saved once, so that reconnect attempts don't have to deal with
     // MalformedURLExceptions that would never occur
@@ -89,13 +92,10 @@ public class WatchConnectionManager<T extends HasMetadata, L extends KubernetesR
     requestUrl = baseOperation.getNamespacedUrl();
     //create after the call above where MalformedURLException can be raised
     //avoids having to call shutdown in case the exception is raised
-    executor = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
-      @Override
-      public Thread newThread(Runnable r) {
-        Thread ret = new Thread(r, "Executor for Watch " + System.identityHashCode(WatchConnectionManager.this));
-        ret.setDaemon(true);
-        return ret;
-      }
+    executor = Executors.newSingleThreadScheduledExecutor(r -> {
+      Thread ret = new Thread(r, "Executor for Watch " + System.identityHashCode(WatchConnectionManager.this));
+      ret.setDaemon(true);
+      return ret;
     });
     runWatch();
   }
@@ -227,11 +227,7 @@ public class WatchConnectionManager<T extends HasMetadata, L extends KubernetesR
             @SuppressWarnings("unchecked")
             T obj = (T) object;
             // Dirty cast - should always be valid though
-            String currentResourceVersion = resourceVersion.get();
-            String newResourceVersion = ((HasMetadata) obj).getMetadata().getResourceVersion();
-            if (currentResourceVersion == null || currentResourceVersion.compareTo(newResourceVersion) < 0) {
-              resourceVersion.compareAndSet(currentResourceVersion, newResourceVersion);
-            }
+            resourceVersion.set(((HasMetadata) obj).getMetadata().getResourceVersion());
             Watcher.Action action = Watcher.Action.valueOf(event.getType());
             watcher.eventReceived(action, obj);
           } else if (object instanceof KubernetesResourceList) {
@@ -239,11 +235,7 @@ public class WatchConnectionManager<T extends HasMetadata, L extends KubernetesR
 
             KubernetesResourceList list = (KubernetesResourceList) object;
             // Dirty cast - should always be valid though
-            String currentResourceVersion = resourceVersion.get();
-            String newResourceVersion = list.getMetadata().getResourceVersion();
-            if (currentResourceVersion == null || currentResourceVersion.compareTo(newResourceVersion) < 0) {
-              resourceVersion.compareAndSet(currentResourceVersion, newResourceVersion);
-            }
+            resourceVersion.set(list.getMetadata().getResourceVersion());
             Watcher.Action action = Watcher.Action.valueOf(event.getType());
             List<HasMetadata> items = list.getItems();
             if (items != null) {
