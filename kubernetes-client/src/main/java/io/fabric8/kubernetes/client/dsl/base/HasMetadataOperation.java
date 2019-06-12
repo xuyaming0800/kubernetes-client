@@ -16,51 +16,43 @@
 
 package io.fabric8.kubernetes.client.dsl.base;
 
+import io.fabric8.kubernetes.api.builder.Function;
+import io.fabric8.kubernetes.api.model.Doneable;
+import io.fabric8.kubernetes.api.model.HasMetadata;
+import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ReplicationController;
+import io.fabric8.kubernetes.client.Config;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.KubernetesClientTimeoutException;
 import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.internal.readiness.Readiness;
 import io.fabric8.kubernetes.client.internal.readiness.ReadinessWatcher;
-import okhttp3.OkHttpClient;
-import io.fabric8.kubernetes.api.builder.Function;
-import io.fabric8.kubernetes.api.model.Doneable;
-import io.fabric8.kubernetes.api.model.HasMetadata;
-import io.fabric8.kubernetes.api.model.KubernetesResourceList;
-import io.fabric8.kubernetes.client.Config;
-import io.fabric8.kubernetes.client.KubernetesClientException;
-
 import java.lang.reflect.InvocationTargetException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import okhttp3.OkHttpClient;
 
 public class HasMetadataOperation<T extends HasMetadata, L extends KubernetesResourceList, D extends Doneable<T>, R extends Resource<T, D>>
   extends BaseOperation< T, L, D, R> {
 
-  protected HasMetadataOperation(OkHttpClient client, Config config, String apiGroup, String apiVersion, String resourceT, String namespace, String name, Boolean cascading, T item, String resourceVersion, Boolean reloadingFromServer, long gracePeriodSeconds, Map<String, String> labels, Map<String, String> labelsNot, Map<String, String[]> labelsIn, Map<String, String[]> labelsNotIn, Map<String, String> fields) {
-    super(client, config, apiGroup, apiVersion, resourceT, namespace, name, cascading, item, resourceVersion, reloadingFromServer, gracePeriodSeconds, labels, labelsNot, labelsIn, labelsNotIn, fields);
-  }
-
-  public HasMetadataOperation(OkHttpClient client, Config config, String apiGroup, String apiVersion, String resourceT, String namespace, String name, Boolean cascading, T item, String resourceVersion, Boolean reloadingFromServer, Class<T> type, Class<L> listType, Class<D> doneableType) {
-    super(client, config, apiGroup, apiVersion, resourceT, namespace, name, cascading, item, resourceVersion, reloadingFromServer, type, listType, doneableType);
+  public HasMetadataOperation(OperationContext ctx) {
+    super(ctx);
   }
 
   @Override
   public D edit() throws KubernetesClientException {
-    final Function<T, T> visitor = new Function<T, T>() {
-      @Override
-      public T apply(T resource) {
-        try {
-          if (isCascading() && !isReaping()) {
-            if (reaper != null) {
-              setReaping(true);
-              reaper.reap();
-            }
+    final Function<T, T> visitor = resource -> {
+      try {
+        if (isCascading() && !isReaping()) {
+          if (reaper != null) {
+            setReaping(true);
+            reaper.reap();
           }
-          return patch(resource);
-        } catch (Exception e) {
-          throw KubernetesClientException.launderThrowable(forOperationType("edit"), e);
         }
+        return patch(resource);
+      } catch (Exception e) {
+        throw KubernetesClientException.launderThrowable(forOperationType("edit"), e);
       }
     };
 
@@ -101,15 +93,12 @@ public class HasMetadataOperation<T extends HasMetadata, L extends KubernetesRes
           }
         }
 
-        final Function<T, T> visitor = new Function<T, T>() {
-          @Override
-          public T apply(T resource) {
-            try {
-              resource.getMetadata().setResourceVersion(resourceVersion);
-              return handleReplace(resource);
-            } catch (Exception e) {
-              throw KubernetesClientException.launderThrowable(forOperationType("replace"), e);
-            }
+        final Function<T, T> visitor = resource -> {
+          try {
+            resource.getMetadata().setResourceVersion(resourceVersion);
+            return handleReplace(resource);
+          } catch (Exception e) {
+            throw KubernetesClientException.launderThrowable(forOperationType("replace"), e);
           }
         };
         D doneable = (D) getDoneableType().getDeclaredConstructor(getType(), Function.class).newInstance(item, visitor);
@@ -125,6 +114,8 @@ public class HasMetadataOperation<T extends HasMetadata, L extends KubernetesRes
             TimeUnit.SECONDS.sleep(1);
           } catch (InterruptedException e1) {
             // Ignore this... would only hide the proper exception
+            // ...but make sure to preserve the interrupted status
+            Thread.currentThread().interrupt();
           }
         }
       } catch (Exception e) {
@@ -149,14 +140,11 @@ public class HasMetadataOperation<T extends HasMetadata, L extends KubernetesRes
         if (got == null) {
           return null;
         }
-        final Function<T, T> visitor = new Function<T, T>() {
-          @Override
-          public T apply(T resource) {
-            try {
-              return handlePatch(got, resource);
-            } catch (Exception e) {
-              throw KubernetesClientException.launderThrowable(forOperationType("patch"), e);
-            }
+        final Function<T, T> visitor = resource -> {
+          try {
+            return handlePatch(got, resource);
+          } catch (Exception e) {
+            throw KubernetesClientException.launderThrowable(forOperationType("patch"), e);
           }
         };
         D doneable = (D) getDoneableType().getDeclaredConstructor(getType(), Function.class).newInstance(item, visitor);
@@ -172,6 +160,8 @@ public class HasMetadataOperation<T extends HasMetadata, L extends KubernetesRes
             TimeUnit.SECONDS.sleep(1);
           } catch (InterruptedException e1) {
             // Ignore this... would only hide the proper exception
+            // ...but make sure to preserve the interrupted status
+            Thread.currentThread().interrupt();
           }
         }
       } catch (Exception e) {
@@ -206,7 +196,7 @@ public class HasMetadataOperation<T extends HasMetadata, L extends KubernetesRes
         }
       }
 
-      long remaining =  (started + amount) - System.currentTimeMillis();
+      long remaining =  (started + amount) - System.nanoTime();
       long next = Math.max(0, Math.min(remaining, interval));
       return periodicWatchUntilReady(i - 1, started, next, amount);
     }
@@ -215,16 +205,16 @@ public class HasMetadataOperation<T extends HasMetadata, L extends KubernetesRes
   @Override
   public T waitUntilReady(long amount, TimeUnit timeUnit) throws InterruptedException {
     if (Readiness.isReadinessApplicable(getType())) {
-      long started = System.currentTimeMillis();
-      waitUntilExists(timeUnit.toMillis(amount));
-      long alreadySpent = System.currentTimeMillis() - started;
+      long started = System.nanoTime();
+      waitUntilExists(amount, timeUnit);
+      long alreadySpent = System.nanoTime() - started;
 
-      long remaining = timeUnit.toMillis(amount) - alreadySpent;
+      long remaining = timeUnit.toNanos(amount) - alreadySpent;
       if (remaining <= 0) {
-        return periodicWatchUntilReady(0, System.currentTimeMillis(), 0, 0);
+        return periodicWatchUntilReady(0, System.nanoTime(), 0, 0);
       }
 
-      return periodicWatchUntilReady(10, System.currentTimeMillis(), Math.max(remaining / 10, 1000L), remaining);
+      return periodicWatchUntilReady(10, System.nanoTime(), Math.max(remaining / 10, 1000L), remaining);
     }
 
     return super.waitUntilReady(amount, timeUnit);

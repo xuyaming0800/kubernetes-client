@@ -16,12 +16,17 @@
 
 package io.fabric8.kubernetes.client.mock;
 
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.batch.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.server.mock.KubernetesServer;
+import io.fabric8.kubernetes.client.utils.Utils;
+import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
+
+import java.util.List;
 
 import static org.junit.Assert.*;
 import static org.junit.Assert.assertFalse;
@@ -59,8 +64,8 @@ public class CronJobTest {
 
   @Test
   public void testListWithLables() {
-    server.expect().withPath("/apis/batch/v1beta1/namespaces/test/cronjobs?labelSelector=" + toUrlEncoded("key1=value1,key2=value2,key3=value3")).andReturn(200, new CronJobListBuilder().build()).always();
-    server.expect().withPath("/apis/batch/v1beta1/namespaces/test/cronjobs?labelSelector=" + toUrlEncoded("key1=value1,key2=value2")).andReturn(200, new CronJobListBuilder()
+    server.expect().withPath("/apis/batch/v1beta1/namespaces/test/cronjobs?labelSelector=" + Utils.toUrlEncoded("key1=value1,key2=value2,key3=value3")).andReturn(200, new CronJobListBuilder().build()).always();
+    server.expect().withPath("/apis/batch/v1beta1/namespaces/test/cronjobs?labelSelector=" + Utils.toUrlEncoded("key1=value1,key2=value2")).andReturn(200, new CronJobListBuilder()
       .addNewItem().and()
       .addNewItem().and()
       .addNewItem().and()
@@ -223,7 +228,7 @@ public class CronJobTest {
     KubernetesClient client = server.getClient();
 
     Boolean deleted = client.batch().cronjobs().inNamespace("test1").delete(cronjob1);
-    assertNotNull(deleted);
+    assertFalse(deleted);
   }
 
   @Test(expected = KubernetesClientException.class)
@@ -239,14 +244,13 @@ public class CronJobTest {
     KubernetesClient client = server.getClient();
     assertNotNull(client.batch().cronjobs().load(getClass().getResourceAsStream("/test-cronjob.yml")).get());
   }
+  @Test
+  public void testHandlersLoadFromFile() {
+    KubernetesClient client = server.getClient();
+    List<HasMetadata> hasMetadata = client.load(getClass().getResourceAsStream("/test-cronjob.yml")).get();
 
-  /**
-   * Converts string to URL encoded string.
-   * It's not a full blown converter, it serves just the purpose of this test.
-   * @param str
-   * @return
-   */
-  private static final String toUrlEncoded(String str) {
-    return str.replaceAll("=", "%3D");
+    assertNotNull("Handlers did not return a valid resource", hasMetadata);
+    assertTrue("Handler did not return expected single resource", 1==hasMetadata.size());
+    assertEquals("hasMetadata found did not match the expected name of the test input", "pi", hasMetadata.get(0).getMetadata().getName());
   }
 }

@@ -16,6 +16,9 @@
 
 package io.fabric8.kubernetes;
 
+import io.fabric8.commons.DeleteEntity;
+import io.fabric8.commons.ReadyEntity;
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.api.model.apps.DeploymentList;
@@ -30,6 +33,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static junit.framework.TestCase.assertNotNull;
@@ -113,8 +117,10 @@ public class DeploymentIT {
 
   @Test
   public void update() {
+    ReadyEntity<Deployment> deploymentReady = new ReadyEntity<>(Deployment.class, client, "deployment1", currentNamespace);
     deployment1 = client.apps().deployments().inNamespace(currentNamespace).withName("deployment1").edit()
       .editSpec().withReplicas(2).endSpec().done();
+    await().atMost(30, TimeUnit.SECONDS).until(deploymentReady);
     assertThat(deployment1).isNotNull();
     assertEquals(2, deployment1.getSpec().getReplicas().intValue());
   }
@@ -123,33 +129,55 @@ public class DeploymentIT {
   public void delete() throws InterruptedException {
     // Usually creation, deletion of things like Deployments take some time. So let's wait for a while:
     // Wait for resources to get ready
-    DeploymentReady deploymentReady = new DeploymentReady(client, "deployment1", currentNamespace);
-    await().atMost(30, TimeUnit.MINUTES).until(deploymentReady);
+    ReadyEntity<Deployment> deploymentReady = new ReadyEntity<>(Deployment.class, client, "deployment1", currentNamespace);
+    await().atMost(30, TimeUnit.SECONDS).until(deploymentReady);
     assertTrue(client.apps().deployments().inNamespace(currentNamespace).delete(deployment1));
   }
 
   @Test
   public void waitTest() throws InterruptedException {
     // Wait for resources to get ready
-    DeploymentReady deploymentReady = new DeploymentReady(client, "deployment1", currentNamespace);
-    await().atMost(30, TimeUnit.MINUTES).until(deploymentReady);
+    ReadyEntity<Deployment> deploymentReady = new ReadyEntity<>(Deployment.class, client, "deployment1", currentNamespace);
+    await().atMost(30, TimeUnit.SECONDS).until(deploymentReady);
     Deployment deploymentOne = client.apps().deployments()
       .inNamespace(currentNamespace).withName("deployment1").get();
     assertTrue(Readiness.isDeploymentReady(deploymentOne));
   }
 
-  @After
-  public void cleanup() throws InterruptedException {
-    try {
-      if (client.apps().deployments().inNamespace(currentNamespace).list().getItems().size() != 0) {
-        client.apps().deployments().inNamespace(currentNamespace).delete();
-      }
-      // Wait for resources to get destroyed
-      DeploymentDelete deploymentDelete = new DeploymentDelete(client, "deployment1", currentNamespace);
-      await().atMost(30, TimeUnit.MINUTES).until(deploymentDelete);
-    } catch (NullPointerException exception){
-      cleanup();
-    }
+  @Test
+  public void listFromServer() {
+    ReadyEntity<Deployment> deploymentReady = new ReadyEntity<>(Deployment.class, client, "deployment1", currentNamespace);
+    await().atMost(30, TimeUnit.SECONDS).until(deploymentReady);
+
+    List<HasMetadata> resources = client.resourceList(deployment1).inNamespace(currentNamespace).fromServer().get();
+
+    assertNotNull(resources);
+    assertEquals(1, resources.size());
+    assertNotNull(resources.get(0));
+
+    HasMetadata fromServerPod = resources.get(0);
+
+    assertEquals(deployment1.getKind(), fromServerPod.getKind());
+    assertEquals(currentNamespace, fromServerPod.getMetadata().getNamespace());
+    assertEquals(deployment1.getMetadata().getName(), fromServerPod.getMetadata().getName());
   }
 
+  @After
+  public void cleanup() throws InterruptedException {
+    int attempts = 0;
+    do {
+      try {
+        if (client.apps().deployments().inNamespace(currentNamespace).list().getItems().size() != 0) {
+          client.apps().deployments().inNamespace(currentNamespace).delete();
+        }
+        // Wait for resources to get destroyed
+        DeleteEntity<Deployment> deploymentDelete = new DeleteEntity<>(Deployment.class, client, "deployment1", currentNamespace);
+        await().atMost(30, TimeUnit.SECONDS).until(deploymentDelete);
+        return;
+      } catch(NullPointerException exception) {
+        attempts++;
+        continue;
+      }
+    } while (attempts < 5);
+  }
 }

@@ -20,6 +20,7 @@ import io.fabric8.kubernetes.client.utils.Serialization;
 import io.fabric8.kubernetes.client.utils.Utils;
 import okhttp3.OkHttpClient;
 import okhttp3.TlsVersion;
+import org.apache.commons.lang.SystemUtils;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -29,7 +30,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static okhttp3.TlsVersion.TLS_1_1;
@@ -46,6 +53,10 @@ public class ConfigTest {
 
   private static final String TEST_CONFIG_YML_FILE = Utils.filePath(ConfigTest.class.getResource("/test-config.yml"));
 
+  private static final String TEST_KUBECONFIG_EXEC_FILE = Utils.filePath(ConfigTest.class.getResource("/test-kubeconfig-exec"));
+  private static final String TEST_TOKEN_GENERATOR_FILE = Utils.filePath(ConfigTest.class.getResource("/token-generator"));
+
+  private static final String TEST_KUBECONFIG_EXEC_WIN_FILE = Utils.filePath(ConfigTest.class.getResource("/test-kubeconfig-exec-win"));
   @Before
   public void setUp() {
     System.getProperties().remove(Config.KUBERNETES_MASTER_SYSTEM_PROPERTY);
@@ -244,6 +255,20 @@ public class ConfigTest {
   }
 
   @Test
+  public void testWithMultipleKubeConfigAndOverrideContext() {
+    System.setProperty(Config.KUBERNETES_KUBECONFIG_FILE, TEST_KUBECONFIG_FILE + File.pathSeparator + "some-other-file");
+
+    Config config = Config.autoConfigure("production/172-28-128-4:8443/root");
+    assertNotNull(config);
+
+    assertEquals("https://172.28.128.4:8443/", config.getMasterUrl());
+    assertEquals("production", config.getNamespace());
+    assertEquals("supertoken", config.getOauthToken());
+    assertTrue(config.getCaCertFile().endsWith("testns/ca.pem".replace("/", File.separator)));
+    assertTrue(new File(config.getCaCertFile()).isAbsolute());
+  }
+
+  @Test
   public void testWithKubeConfigAndSystemProperties() {
     System.setProperty(Config.KUBERNETES_KUBECONFIG_FILE, TEST_KUBECONFIG_FILE);
     System.setProperty(Config.KUBERNETES_MASTER_SYSTEM_PROPERTY, "http://somehost:80");
@@ -327,8 +352,8 @@ public class ConfigTest {
     System.setProperty(Config.KUBERNETES_IMPERSONATE_USERNAME, "username");
     System.setProperty(Config.KUBERNETES_IMPERSONATE_GROUP, "group");
 
-    final Map<String, String> extras = new HashMap<>();
-    extras.put("c", "d");
+    final Map<String, List<String>> extras = new HashMap<>();
+    extras.put("c", Collections.singletonList("d"));
 
     final Config config = new ConfigBuilder()
       .withImpersonateUsername("a")
@@ -337,7 +362,7 @@ public class ConfigTest {
 
     assertEquals("a", config.getImpersonateUsername());
     assertArrayEquals(new String[]{"group"}, config.getImpersonateGroups());
-    assertEquals("d", config.getImpersonateExtras().get("c"));
+    assertEquals(Arrays.asList("d"), config.getImpersonateExtras().get("c"));
 
   }
 
@@ -394,8 +419,8 @@ public class ConfigTest {
   @Test
   public void shouldPropagateImpersonateSettings() {
 
-    final Map<String, String> extras = new HashMap<>();
-    extras.put("c", "d");
+    final Map<String, List<String>> extras = new HashMap<>();
+    extras.put("c", Collections.singletonList("d"));
 
     final Config config = new ConfigBuilder()
       .withImpersonateUsername("a")
@@ -408,7 +433,31 @@ public class ConfigTest {
 
     assertEquals("a", currentConfig.getImpersonateUsername());
     assertArrayEquals(new String[]{"b"}, currentConfig.getImpersonateGroups());
-    assertEquals("d", currentConfig.getImpersonateExtras().get("c"));
+    assertEquals(Arrays.asList("d"), currentConfig.getImpersonateExtras().get("c"));
+  }
+
+  @Test
+  public void honorClientAuthenticatorCommands() throws Exception {
+    if (SystemUtils.IS_OS_WINDOWS) {
+      System.setProperty(Config.KUBERNETES_KUBECONFIG_FILE, TEST_KUBECONFIG_EXEC_WIN_FILE);
+    } else {
+      Files.setPosixFilePermissions(Paths.get(TEST_TOKEN_GENERATOR_FILE), PosixFilePermissions.fromString("rwxrwxr-x"));
+      System.setProperty(Config.KUBERNETES_KUBECONFIG_FILE, TEST_KUBECONFIG_EXEC_FILE);
+    }
+
+    Config config = Config.autoConfigure(null);
+    assertNotNull(config);
+    assertEquals("HELLO WORLD", config.getOauthToken());
+  }
+
+  @Test
+  public void shouldBeUsedTokenSuppliedByProvider() throws Exception {
+
+    Config config = new ConfigBuilder().withOauthToken("oauthToken")
+                                       .withOauthTokenProvider(() -> "PROVIDER_TOKEN")
+                                       .build();
+
+    assertEquals("PROVIDER_TOKEN", config.getOauthToken());
   }
 
   private void assertConfig(Config config) {

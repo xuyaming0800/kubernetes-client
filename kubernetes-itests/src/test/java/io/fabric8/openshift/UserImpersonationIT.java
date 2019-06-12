@@ -31,6 +31,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
@@ -51,8 +53,8 @@ public class UserImpersonationIT {
   Session session;
 
   private ServiceAccount serviceAccount1;
-  private KubernetesClusterRole impersonatorRole;
-  private KubernetesClusterRoleBinding impersonatorRoleBinding;
+  private ClusterRole impersonatorRole;
+  private ClusterRoleBinding impersonatorRoleBinding;
 
   private String currentNamespace;
 
@@ -60,18 +62,18 @@ public class UserImpersonationIT {
   public void init() {
     currentNamespace = session.getNamespace();
     // Create impersonator cluster role
-    impersonatorRole = new KubernetesClusterRoleBuilder()
+    impersonatorRole = new ClusterRoleBuilder()
       .withNewMetadata()
       .withName("impersonator")
       .endMetadata()
-      .addToRules(new KubernetesPolicyRuleBuilder()
+      .addToRules(new PolicyRuleBuilder()
         .addToApiGroups("")
-        .addToResources("users", "groups", "serviceaccounts")
+        .addToResources("users", "groups", "userextras", "serviceaccounts")
         .addToVerbs("impersonate")
         .build()
       )
       .build();
-    client.rbac().kubernetesClusterRoles().inNamespace(currentNamespace).createOrReplace(impersonatorRole);
+    client.rbac().clusterRoles().inNamespace(currentNamespace).createOrReplace(impersonatorRole);
 
     // Create Service Account
     serviceAccount1 = new ServiceAccountBuilder()
@@ -80,18 +82,18 @@ public class UserImpersonationIT {
     client.serviceAccounts().inNamespace(currentNamespace).create(serviceAccount1);
 
     // Bind Impersonator Role to current user
-    impersonatorRoleBinding = new KubernetesClusterRoleBindingBuilder()
+    impersonatorRoleBinding = new ClusterRoleBindingBuilder()
       .withNewMetadata()
       .withName("impersonate-role")
       .endMetadata()
-      .addToSubjects(new KubernetesSubjectBuilder()
+      .addToSubjects(new SubjectBuilder()
         .withApiGroup("rbac.authorization.k8s.io")
         .withKind("User")
         .withName(client.currentUser().getMetadata().getName())
         .withNamespace(currentNamespace)
         .build()
       )
-      .withRoleRef(new KubernetesRoleRefBuilder()
+      .withRoleRef(new RoleRefBuilder()
         .withApiGroup("rbac.authorization.k8s.io")
         .withKind("ClusterRole")
         .withName("impersonator")
@@ -99,7 +101,7 @@ public class UserImpersonationIT {
       )
       .build();
 
-    client.rbac().kubernetesClusterRoleBindings().inNamespace(currentNamespace).createOrReplace(impersonatorRoleBinding);
+    client.rbac().clusterRoleBindings().inNamespace(currentNamespace).createOrReplace(impersonatorRoleBinding);
   }
 
 
@@ -108,6 +110,7 @@ public class UserImpersonationIT {
     RequestConfig requestConfig = client.getConfiguration().getRequestConfig();
     requestConfig.setImpersonateUsername(SERVICE_ACCOUNT);
     requestConfig.setImpersonateGroups("system:authenticated", "system:authenticated:oauth");
+    requestConfig.setImpersonateExtras(Collections.singletonMap("scopes", Arrays.asList("cn=jane","ou=engineers","dc=example","dc=com")));
 
     User user = client.currentUser();
     assertThat(user.getMetadata().getName()).isEqualTo(SERVICE_ACCOUNT);
@@ -119,6 +122,7 @@ public class UserImpersonationIT {
     RequestConfig requestConfig = client.getConfiguration().getRequestConfig();
     requestConfig.setImpersonateUsername(SERVICE_ACCOUNT);
     requestConfig.setImpersonateGroups("system:authenticated", "system:authenticated:oauth");
+    requestConfig.setImpersonateExtras(Collections.singletonMap("scopes", Collections.singletonList("development")));
     // Create a project
     ProjectRequest projectRequest = client.projectrequests().createNew()
       .withNewMetadata()
@@ -139,57 +143,37 @@ public class UserImpersonationIT {
     requestConfig.setImpersonateUsername(null);
     requestConfig.setImpersonateGroups(null);
 
-    // Delete Cluster Role
-    client.rbac().kubernetesClusterRoles().inNamespace(currentNamespace).delete(impersonatorRole);
+    // DeleteEntity Cluster Role
+    client.rbac().clusterRoles().inNamespace(currentNamespace).delete(impersonatorRole);
     await().atMost(30, TimeUnit.SECONDS).until(kubernetesClusterRoleIsDeleted());
 
-    // Delete Cluster Role binding
-    client.rbac().kubernetesClusterRoleBindings().inNamespace(currentNamespace).delete(impersonatorRoleBinding);
+    // DeleteEntity Cluster Role binding
+    client.rbac().clusterRoleBindings().inNamespace(currentNamespace).delete(impersonatorRoleBinding);
     await().atMost(30, TimeUnit.SECONDS).until(kubernetesClusterRoleBindingIsDeleted());
 
-    // Delete project
+    // DeleteEntity project
     client.projects().withName(NEW_PROJECT).delete();
     await().atMost(30, TimeUnit.SECONDS).until(projectIsDeleted());
 
-    // Delete ServiceAccounts
+    // DeleteEntity ServiceAccounts
     client.serviceAccounts().inNamespace(currentNamespace).delete(serviceAccount1);
     await().atMost(30, TimeUnit.SECONDS).until(serviceAccountIsDeleted());
   }
 
   private Callable<Boolean> serviceAccountIsDeleted() {
-    return new Callable<Boolean>() {
-      @Override
-      public Boolean call() {
-        return client.serviceAccounts().inNamespace(currentNamespace).withName(serviceAccount1.getMetadata().getName()).get() == null;
-      }
-    };
+    return () -> client.serviceAccounts().inNamespace(currentNamespace).withName(serviceAccount1.getMetadata().getName()).get() == null;
   }
 
   private Callable<Boolean> projectIsDeleted() {
-    return new Callable<Boolean>() {
-      @Override
-      public Boolean call() {
-        return client.projects().withName(NEW_PROJECT).get() == null;
-      }
-    };
+    return () -> client.projects().withName(NEW_PROJECT).get() == null;
   }
 
   private Callable<Boolean> kubernetesClusterRoleBindingIsDeleted() {
-    return new Callable<Boolean>() {
-      @Override
-      public Boolean call() {
-        return client.rbac().kubernetesClusterRoleBindings().inNamespace(currentNamespace).withName("impersonator-role").get() == null;
-      }
-    };
+    return () -> client.rbac().clusterRoleBindings().inNamespace(currentNamespace).withName("impersonator-role").get() == null;
   }
 
   private Callable<Boolean> kubernetesClusterRoleIsDeleted() {
-    return new Callable<Boolean>() {
-      @Override
-      public Boolean call() {
-        return client.rbac().kubernetesClusterRoles().inNamespace(currentNamespace).withName("impersonator").get() == null;
-      }
-    };
+    return () -> client.rbac().clusterRoles().inNamespace(currentNamespace).withName("impersonator").get() == null;
   }
 
 
