@@ -41,6 +41,11 @@
   #end
 #end
 
+#set ($prefix = "")
+#if (${model.fullyQualifiedName} == "io.fabric8.kubernetes.api.model.extensions.Deployment")
+  #set ($prefix = "Extension")
+#end
+
 
 package io.fabric8.kubernetes.client.dsl.internal;
 
@@ -62,13 +67,13 @@ import java.util.Map;
 import java.util.TreeMap;
 
 
-public class ${model.name}OperationsImpl extends HasMetadataOperation<${model.name}, ${model.name}List, Doneable${model.name}, Resource<${model.name}, Doneable${model.name}>> {
+public class $prefix${model.name}OperationsImpl extends HasMetadataOperation<${model.name}, ${model.name}List, Doneable${model.name}, Resource<${model.name}, Doneable${model.name}>> {
 
-  public ${model.name}OperationsImpl(OkHttpClient client, Config config) {
+  public $prefix${model.name}OperationsImpl(OkHttpClient client, Config config) {
     this(new OperationContext().withOkhttpClient(client).withConfig(config));
   }
 
-  public ${model.name}OperationsImpl(OperationContext context) {
+  public $prefix${model.name}OperationsImpl(OperationContext context) {
     super(context.withApiGroupName("$apiGroupName")
     .withApiGroupVersion("$apiGroupVersion")
     .withPlural("#pluralize ($model.name.toLowerCase())"));
@@ -77,7 +82,7 @@ public class ${model.name}OperationsImpl extends HasMetadataOperation<${model.na
     this.doneableType = Doneable${model.name}.class;
   }
 
-  public ${model.name}OperationsImpl newInstance(OperationContext context) {
-    return new ${model.name}OperationsImpl(context);
+  public $prefix${model.name}OperationsImpl newInstance(OperationContext context) {
+    return new $prefix${model.name}OperationsImpl(context);
   }
 }

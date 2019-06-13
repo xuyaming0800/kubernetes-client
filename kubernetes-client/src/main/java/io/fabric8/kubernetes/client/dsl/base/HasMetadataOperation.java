@@ -40,6 +40,10 @@ public class HasMetadataOperation<T extends HasMetadata, L extends KubernetesRes
     super(ctx);
   }
 
+  protected HasMetadataOperation(OkHttpClient client, Config config, String apiGroup, String apiVersion, String resourceT, String namespace, String name, Boolean cascading, T item, String resourceVersion, Boolean reloadingFromServer, long gracePeriodSeconds, Map<String, String> labels, Map<String, String> labelsNot, Map<String, String[]> labelsIn, Map<String, String[]> labelsNotIn, Map<String, String> fields) {
+    super(new OperationContext(client,config,null,namespace,name,apiGroup,apiVersion,cascading,item,labels,labelsNot,labelsIn,labelsNotIn,fields,resourceVersion,reloadingFromServer,gracePeriodSeconds));
+  }
+
   @Override
   public D edit() throws KubernetesClientException {
     final Function<T, T> visitor = resource -> {

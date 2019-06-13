@@ -40,6 +40,10 @@
   #end
 #end
 
+#set ($prefix = "")
+#if (${model.fullyQualifiedName} == "io.fabric8.kubernetes.api.model.extensions.Deployment")
+  #set ($prefix = "Extension")
+#end
 
 package io.fabric8.kubernetes.client.handlers;
 
@@ -49,7 +53,7 @@ import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ResourceHandler;
 import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.Watcher;
-import io.fabric8.kubernetes.client.dsl.internal.${model.name}OperationsImpl;
+import io.fabric8.kubernetes.client.dsl.internal.$prefix${model.name}OperationsImpl;
 
 import io.fabric8.kubernetes.client.dsl.base.OperationContext;
 import okhttp3.OkHttpClient;
@@ -60,8 +64,7 @@ import ${model.fullyQualifiedName}Builder;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 
-public class ${model.name}Handler implements ResourceHandler<${model.name}, ${model.name}Builder> {
-
+public class $prefix${model.name}Handler implements ResourceHandler<${model.name}, ${model.name}Builder> {
   @Override
   public String getKind() {
     return ${model.name}.class.getSimpleName();
@@ -70,7 +73,7 @@ public class ${model.name}Handler implements ResourceHandler<${model.name}, ${mo
   @Override
   public String getApiVersion() {
     #if (${apiGroup} != "")
-    return "${apiGroup}/${apiVersion}";
+      return "${apiGroup}/${apiVersion}";
     #else
     return "${apiVersion}";
     #end
@@ -78,17 +81,17 @@ public class ${model.name}Handler implements ResourceHandler<${model.name}, ${mo
 
   @Override
   public ${model.name} create(OkHttpClient client, Config config, String namespace, ${model.name} item) {
-    return new ${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).create();
+    return new $prefix${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).create();
   }
 
   @Override
   public ${model.name} replace(OkHttpClient client, Config config, String namespace, ${model.name} item) {
-    return new ${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).replace(item);
+    return new $prefix${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).replace(item);
   }
 
   @Override
   public ${model.name} reload(OkHttpClient client, Config config, String namespace, ${model.name} item) {
-    return new ${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).fromServer().get();
+    return new $prefix${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).fromServer().get();
   }
 
   @Override
@@ -98,26 +101,26 @@ public class ${model.name}Handler implements ResourceHandler<${model.name}, ${mo
 
   @Override
   public Boolean delete(OkHttpClient client, Config config, String namespace, ${model.name} item) {
-    return new ${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).delete(item);
+    return new $prefix${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).delete(item);
   }
 
   @Override
   public Watch watch(OkHttpClient client, Config config, String namespace, ${model.name} item, Watcher<${model.name}> watcher) {
-    return new ${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).watch(watcher);
+    return new $prefix${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).watch(watcher);
   }
 
   @Override
   public Watch watch(OkHttpClient client, Config config, String namespace, ${model.name} item, String resourceVersion, Watcher<${model.name}> watcher) {
-    return new ${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).watch(resourceVersion, watcher);
+    return new $prefix${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).watch(resourceVersion, watcher);
   }
 
   @Override
   public ${model.name} waitUntilReady(OkHttpClient client, Config config, String namespace, ${model.name} item, long amount, TimeUnit timeUnit) throws InterruptedException {
-    return new ${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).waitUntilReady(amount, timeUnit);
+    return new $prefix${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).waitUntilReady(amount, timeUnit);
   }
 
   @Override
   public ${model.name} waitUntilCondition(OkHttpClient client, Config config, String namespace, ${model.name} item, Predicate<${model.name}> condition, long amount, TimeUnit timeUnit) throws InterruptedException {
-    return new ${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).waitUntilCondition(condition, amount, timeUnit);
+    return new $prefix${model.name}OperationsImpl(client, config).withItem(item).inNamespace(namespace).withName(item.getMetadata().getName()).waitUntilCondition(condition, amount, timeUnit);
   }
 }

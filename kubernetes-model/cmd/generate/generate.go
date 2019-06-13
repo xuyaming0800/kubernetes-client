@@ -160,6 +160,8 @@ type Schema struct {
 	HorizontalPodAutoscalerList           autoscalingapiv2beta1.HorizontalPodAutoscalerList
 	Deployment                            k8sappsapi.Deployment
 	DeploymentList                        k8sappsapi.DeploymentList
+  ExtensionDeployment                   extensions.Deployment
+  ExtensionDeploymentList               extensions.DeploymentList
 	DeploymentRollback                    extensions.DeploymentRollback
 	PodSecurityPolicy                     extensions.PodSecurityPolicy
 	PodSecurityPolicyList                 extensions.PodSecurityPolicyList

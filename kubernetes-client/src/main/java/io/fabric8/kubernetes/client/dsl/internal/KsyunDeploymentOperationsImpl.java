@@ -195,7 +195,7 @@ public class KsyunDeploymentOperationsImpl extends HasMetadataOperation<Deployme
       if (selector == null || (selector.getMatchLabels() == null && selector.getMatchExpressions() == null)) {
         return;
       }
-      ReplicaSetOperationsImpl rsOper = new ReplicaSetOperationsImpl(oper.client, oper.getConfig(), oper.getNamespace());
+      ReplicaSetOperationsImpl rsOper = new ReplicaSetOperationsImpl(oper.client, oper.getConfig());
       rsOper.inNamespace(oper.getNamespace()).withLabelSelector(selector).delete();
     }
   }
